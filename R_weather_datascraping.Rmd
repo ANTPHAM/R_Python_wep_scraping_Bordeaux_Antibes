@@ -1,0 +1,492 @@
+---
+title: "Scraping Weather Data for Bordeaux and Antibes "
+author: Antoine.P _ August 2017
+output: html_notebook
+---
+We are going to use the package 'weatherData' in R to scrap one of Data souces  we need to keep building the Context Aware Reccomendation System for restaurant sector.
+
+Firstly, we try to do some weather data analysis with using this package which can be founded at: "https://ram-n.github.io/weatherData/example_weatherYear.html"
+
+
+( 2nd solution with PYTHON : Wunderground Data with Python Pandas & Seaborn Tutorial /Shane Lynn)
+
+```{r}
+library(weatherData)
+city1 <- "BOD"
+df1 <- getWeatherForYear(city1,2016)# this code can be used when we want to get a daily data set for one year
+```
+
+```{r}
+head(df1,3)
+```
+
+```{r}
+city2 <- "NCE"
+df2 <- getWeatherForYear(city2, 2016)
+```
+
+```{r}
+head(df2,3)
+```
+
+```{r}
+a<-df1$Date
+b<-df2$Date
+manque_data<-b[!(b %in% a)]# to find out records in b but not in a
+df22<-subset(df2,!(Date %in% c('2016-04-03','2016-04-04', '2016-05-12', '2016-10-29' ,'2016-11-19', '2016-11-20',  '2016-11-21')))
+
+```
+
+```{r}
+getDailyDifferences <- function(df1, df22){
+  Delta_Means <- df1$Mean_TemperatureC - df22$Mean_TemperatureC
+  Delta_Max <- df1$Max_TemperatureC - df22$Max_TemperatureC
+  Delta_Min <- df1$Min_TemperatureC - df22$Min_TemperatureC
+
+  
+  diff_df <- data.frame(Date=df1$Date, Delta_Means, Delta_Max, Delta_Min)
+  return(diff_df)
+}
+```
+
+```{r}
+plotDifferences <- function (differences, city1, city2) {
+library(reshape2)
+  m.diff <- melt(differences, id.vars=c("Date"))
+  p <- ggplot(m.diff, aes(x=Date, y=value)) + geom_point(aes(color=variable)) +  
+    facet_grid(variable ~ .) +geom_hline(yintercept=0)
+  p <- p + labs(title=paste0("Daily Temperature Differences: ", "Bordeaux", " minus ","Nice"))
+  print(p)
+}
+```
+
+```{r, echo=TRUE}
+library(ggplot2)
+differences<- getDailyDifferences(df1, df22)
+plotDifferences(differences, city1, city2)
+```
+SCRAPING DATA FOR OUR PROJECT
+
+First, get the station code of Bordeaux
+```{r}
+getStationCode("Bordeaux")
+```
+The code of Bordeaux is 'LFBD'.
+
+
+Now, which columns relate to our project?
+
+
+The code following will fetch the data by defaut, so giving us a data set containing 2 columns: TemperatureC and DateUTC
+
+```{r}
+bor_rawdat<-getWeatherForDate("LFBD",start_date = "2016-01-01",end_date = "2017-08-30",opt_detailed = TRUE)
+```
+
+However we are also interested in columns: 2,4,7,12,14. 
+
+Please note that the column numbers are very different depending on whether or not opt_detailed is TRUE or FALSE.
+
+When fetching the data, we have to set opt_custom_columns=TRUE and custom_columns=c(2,4,,7,12,14).
+
+We are now ready to actually fetch the data.
+
+
+```{r}
+bor_rawdat<-getWeatherForDate("LFBD",start_date = "2016-01-01",end_date = "2017-08-30",opt_detailed = TRUE,opt_custom_columns=T, custom_columns=c(2,4,7,12,14))
+```
+
+```{r}
+head(bor_rawdat)
+```
+
+```{r}
+dim(bor_rawdat)
+```
+
+DOING THE SAME ACTION FOR ANTIBES
+
+
+```{r}
+getStationCode("Antibes")
+```
+IBONSON2
+
+```{r}
+showAvailableColumns("Antibes", start_date = "2016-01-01",end_date = "2017-08-30" )
+```
+
+```{r}
+antibes_rawdat<-getWeatherForDate("Antibes",start_date = "2016-01-01", end_date = "2017-08-30",opt_detailed = TRUE,opt_custom_columns=TRUE,custom_columns = c(2,4,7,12,14))
+```
+
+
+```{r}
+dim(antibes_rawdat)
+```
+
+```{r}
+head(antibes_rawdat,3)
+```
+
+```{r}
+tail(antibes_rawdat,3)
+```
+
+```{r}
+getwd()
+```
+EXPORTING THESE 2 DATA SETS TO CSV FILES
+```{r}
+write.csv(bor_rawdat,"Bordeaux_weather_data.csv",row.names = FALSE)
+
+```
+
+```{r}
+write.csv(antibes_rawdat,"Antibes_weather_data.csv", row.names = FALSE)
+```
+
+DATA VISUALIZATION AND EXPLORATION
+
+```{r}
+BORdf<-read.csv("C:/Users/Pham Antoine/Bordeaux_weather_data.csv", sep = ',' )
+head(BORdf,3)
+```
+
+```{r}
+ANTdf<-read.csv("C:/Users/Pham Antoine/Antibes_weather_data.csv", sep = ',')
+head(ANTdf,3)
+```
+
+```{r}
+library(funModeling)
+df_status(BORdf)
+```
+
+
+```{r}
+str(BORdf)
+```
+
+```{r}
+summary(BORdf)
+```
+
+```{r}
+df_status(ANTdf)
+```
+
+```{r}
+ANTdf$Humidity<-as.integer(ANTdf$Humidity)
+```
+
+```{r}
+str(ANTdf)
+```
+
+```{r}
+summary(ANTdf)
+```
+Checking missing values & outliers
+```{r}
+subset(ANTdf,TemperatureC< -10)
+```
+
+```{r}
+unique(BORdf$Conditions)
+```
+VISUALIZATION OF TEMPERATURE & HUMIDITY DISTRIBUTION IN BORDEAUX
+
+```{r, fig.width = 12, fig.height = 8}
+library(plyr)
+tm <- ddply(BORdf, "Conditions", summarise, grp.mean=mean(TemperatureC))
+ggplot(BORdf,aes(x=TemperatureC))+ 
+  geom_density(aes(group=Conditions, colour=Conditions, fill=NULL), alpha=0.8)+
+  geom_vline(data=tm, aes(xintercept=grp.mean, color=Conditions),linetype="dashed")
+
+```
+
+```{r,fig.width = 12, fig.height = 8}
+tm1 <- ddply(BORdf, "Conditions", summarise, grp.mean=mean(Humidity))
+ggplot(BORdf,aes(x=Humidity))+ 
+  geom_density(aes(group=Conditions, colour=Conditions, fill=NULL), alpha=0.8)+
+  geom_vline(data=tm1, aes(xintercept=grp.mean, color=Conditions),linetype="dashed")
+
+```
+
+ 
+VISUALIZATION OF TEMPERATURE & HUMIDITY DISTRIBUTION IN ANTIBES
+
+```{r,fig.width = 12, fig.height = 8}
+t=subset(ANTdf,TemperatureC> -10)# for ignoring records having outliers=-9999 as temperature
+tn<- ddply(t, "Conditions", summarise, grp.mean=mean(TemperatureC))
+ggplot(t,aes(x=TemperatureC))+ 
+  geom_density(aes(group=Conditions, colour=Conditions, fill=NULL), alpha=0.8)+
+  geom_vline(data=tn, aes(xintercept=grp.mean, color=Conditions),linetype="dashed")
+
+```
+
+```{r,fig.width = 12, fig.height = 8}
+tn1<- ddply(ANTdf, "Conditions", summarise, grp.mean=mean(Humidity))
+ggplot(ANTdf,aes(x=Humidity))+ 
+  geom_density(aes(group=Conditions, colour=Conditions, fill=NULL), alpha=0.8)+
+  geom_vline(data=tn1, aes(xintercept=grp.mean, color=Conditions),linetype="dashed")
+
+```
+
+```{r}
+library(UsingR)
+attach(BORdf)
+plot(TemperatureC,Humidity,main=paste("Correlation: Temperature vs. Humidity in Bordeaux",signif(cor(TemperatureC,TemperatureC),2)))
+```
+
+```{r, fig.width = 12, fig.height = 8}
+gg <- ggplot(BORdf, aes(x=Humidity, y=TemperatureC)) +
+geom_point(aes(col=Conditions,size=0.001)) +
+geom_smooth(method="loess", se=F) +
+xlim(c(0, 110)) +
+ylim(c(-10, 40)) +
+labs(subtitle="Correlation :Temperature- Humidity-Conditions in Bordeaux",
+y="Temperature °C",
+x="Humidity",
+title="Scatterplot",
+caption = "Source: scraped from R package 'weatherData'_https://www.wunderground.com")
+plot(gg)
+```
+
+```{r,fig.width = 8, fig.height = 6}
+barplot(table(BORdf$Conditions), 
+        main= 'Conditions',las=2,col = BORdf$Conditions,cex.axis=0.8,cex.names=1)#las=2 for ajusting the angle of texts:https://stackoverflow.com/questions/10286473/rotating-x-axis-labels-in-r-for-barplot
+#, 
+ #       col= c(len(BORdf$Conditions)))
+#, legend.text =c("0 = Non","1 = Partielle","2 = Totale"),xlab="Type de resiliation", ylab="Nombre de contrats",ylim=c(0,150000), beside=TRUE,args.legend = list(x="topright",title= "Type", cex=0.6))
+```
+
+```{r}
+table(BORdf$Conditions)
+```
+
+```{r}
+library(UsingR)
+attach(t)
+plot(TemperatureC,Humidity,main=paste("Correlation: Temperature vs. Humidity in Antibes",signif(cor(TemperatureC,TemperatureC),2)))
+```
+
+```{r,fig.width = 12, fig.height = 8}
+gq <- ggplot(t, aes(x=Humidity, y=TemperatureC)) +
+geom_point(aes(col=Conditions,size=0.001)) +
+geom_smooth(method="loess", se=F) +
+xlim(c(0, 110)) +
+ylim(c(-10, 40)) +
+labs(subtitle="Correlation :Temperature- Humidity-Conditions in Antibes",
+y="Temperature °C",
+x="Humidity",
+title="Scatterplot",
+caption = "Source: scraped from R package 'weatherData'-https://www.wunderground.com")
+plot(gq)
+```
+
+```{r}
+barplot(table(ANTdf$Conditions), 
+        main= 'Conditions',las=2,col = BORdf$Conditions,cex.axis=0.8,cex.names=1)
+```
+
+
+```{r}
+table(ANTdf$Conditions)
+```
+
+```{r}
+head(BORdf)
+```
+
+```{r}
+as.POSIXct(BORdf$Time[1])
+```
+
+```{r}
+library(lubridate)
+hour(BORdf$Time[1])
+```
+
+```{r}
+d=date(BORdf$Time[1])
+d
+```
+```{r}
+class(BORdf$Time)
+```
+
+Extracting under Date format from the date factor in the column 'Time' to a new column called "Date" 
+```{r}
+library(lubridate)
+BORdf$Date<-as.Date(BORdf$Time)
+tail(BORdf,2)
+```
+Extracting now the day of the week in a new column called ' DoW'
+
+The function 'wday' returns the day of the week as a decimal number (01-07, Sunday is 1) or an ordered factor(Sunday is first).
+
+```{r}
+BORdf$DoW<-wday(BORdf$Date)
+```
+
+Extracting now the day of the month in a new column called ' DoM',teh week of the year to 'WoY', the month of the year to "MoY", the querter of the year to 'QoY'
+```{r}
+BORdf$DoM<-mday(BORdf$Date)
+BORdf$WoY<-week(BORdf$Date)
+BORdf$MoY<-month(BORdf$Date)
+BORdf$QoY<-quarter(BORdf$Date)
+tail(BORdf)
+```
+
+Creating a column called "schedule"" containing one of the following values: 'a_day_off', 'before_a_day_off', 'holidays' or 'no_event'
+```{r}
+
+BORdf$schedule<-ifelse(BORdf$Date=='2016-01-01'| BORdf$Date=='2016-03-28'|BORdf$Date =='2016-05-01'|BORdf$Date=='2016-05-08'|
+                       BORdf$Date=='2016-05-16'| BORdf$Date=='2016-07-14'| BORdf$Date=='2016-08-15'|
+                       BORdf$Date=='2016-11-01'|BORdf$Date=='2016-11-11'|BORdf$Date=='2016-12-25'|
+                       BORdf$Date=='2017-01-01'| BORdf$Date=='2017-04-17'|BORdf$Date=='2017-05-01'| BORdf$Date=='2017-05-08'| BORdf$Date=='2017-05-25'|BORdf$Date=='2017-06-05'|BORdf$Date=='2017-07-14'| BORdf$Date=='2017-08-15'|BORdf$Date=='2017-11-01'|BORdf$Date=='2017-11-11'|BORdf$Date=='2017-12-25',
+                       'a_day_off',
+                       ifelse(BORdf$Date+1=='2016-01-01'| BORdf$Date+1=='2016-03-28'|BORdf$Date+1 =='2016-05-01'| BORdf$Date+1=='2016-05-08'|
+                       BORdf$Date+1=='2016-05-16'| BORdf$Date+1=='2016-07-14'| BORdf$Date+1=='2016-08-15'|
+                       BORdf$Date+1=='2016-11-01'|BORdf$Date+1=='2016-11-11'|
+                       BORdf$Date+1=='2017-01-01'| BORdf$Date+1=='2017-05-01'| BORdf$Date+1=='2017-05-08'|
+                       BORdf$Date+1=='2017-05-16'| BORdf$Date+1=='2017-07-14'| BORdf$Date+1=='2017-08-15'|BORdf$Date+1=='2017-11-01'|BORdf$Date+1=='2017-11-11',
+                       'before_aday_off',
+                       ifelse(BORdf$Date <'2016-01-04'| BORdf$Date >'2016-02-13'& BORdf$Date < '2016-02-29'| BORdf$Date >'2016-04-09'&
+                       BORdf$Date <'2016-04-25'| BORdf$Date>'2016-05-04'& BORdf$Date<'2016-05-09'|
+                       BORdf$Date>'2016-07-05'&BORdf$Date<'2016-09-01'|
+                       BORdf$Date>'2016-10-19'& BORdf$Date<'2016-11-03'|BORdf$Date>'2016-12-17'&BORdf$Date<'2017-01-03'|
+                       BORdf$Date>'2017-02-18'& BORdf$Date<'2017-03-06'| BORdf$Date>'2017-04-15'&BORdf$Date<'2017-05-02'|BORdf$Date>'2017-05-24'&BORdf$Date<'2017-05-29'|
+                         BORdf$Date>'2017-07-08'&BORdf$Date<'2017-09-04',
+                       'holidays',
+                       'no_event')
+                       ))
+```
+
+*Note: can use 'with' to avoid repeting Bordf$..
+
+Bordf$schedule<-with(ifelse(Date==...,
+                              a_day_off,
+                              ifelse( Date+1,.....
+                              'befor_a_day_off',...????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
+
+```{r}
+BORdf$schedule<-as.factor(BORdf$schedule)
+head(BORdf,3)
+```
+
+```{r}
+# check
+subset(BORdf,Date=='2017-07-30')$schedule[1:5]
+
+```
+Working with date( some examples)
+```{r}
+l=substring(BORdf$DateUTC[1],12,19)
+l= as.factor(l)
+print(l)
+```
+
+```{r}
+class(l)
+```
+
+```{r}
+l=as.factor(l)
+class(l)
+```
+
+```{r}
+l<-as.POSIXct(l,format="%H:%M:%S")
+l
+# if date non given, the current date is showed by default
+```
+
+```{r}
+class(l)
+```
+
+
+```{r}
+hour(l)
+```
+LET'S KEEP BUIDING OUR " CONTEXT" DATA SET 
+Adding a column named 'hour' indicating, the class of this feature will be integrer
+
+```{r}
+BORdf$H<- hour(BORdf$Time)
+colnames(BORdf)
+
+class(BORdf$H)
+```
+Now, create a column containing !h:m:s, the class of this feature will be factor
+```{r}
+BORdf$HMS<-substring(BORdf$Time,12,19)# take from the 12th to 19th elements of the variable 'Time'
+class(BORdf$HMS)
+```
+converting this feature to factor   
+```{r}
+BORdf$HMS<-as.factor(BORdf$HMS)
+head(BORdf,1)
+```
+
+```{r}
+table(BORdf$HMS)
+```
+
+```{r}
+summary(BORdf)
+```
+
+```{r}
+colnames(BORdf)
+```
+
+```{r}
+head(BORdf,2)
+
+```
+
+```{r,fig.width = 10,fig.height = 6}
+ggplot(BORdf, aes(Humidity,TemperatureC))+ geom_point(aes(color = schedule)) +
+scale_x_continuous("Humidity", breaks = seq(0,100,by = 5))+
+scale_y_continuous("TemperatureC", breaks = seq(-10,110,by = 5))+
+labs(subtitle="Correlation :Temperature vs. Humidity by the type of day in BORDEAUX")+
+theme_bw() + labs(title="Scatterplot")
+
+```
+
+```{r,,fig.width = 10,fig.height = 6}
+# this code is from : "7 Visualizations You Should Learn in R | Rbloggers"
+
+ggplot(BORdf, aes(Humidity,TemperatureC)) + geom_point(aes(color = schedule)) +
+scale_x_continuous("Humidity", breaks = seq(0,110,10))+
+scale_y_continuous("TemperatureC", breaks = seq(-10,40,5))+
+theme_bw() + labs(title="Scatterplot") + facet_wrap( ~ schedule)
+
+```
+
+```{r}
+sub1=subset(BORdf,TemperatureC < 0,select = c('schedule','DoW','MoY'))
+table(sub1$schedule,sub1$DoW)
+```
+
+```{r}
+library(dplyr)
+sub1<-tbl_df(sub1)# converting sub1 from df to table with 'dplyr' package, using filter to extract data ( no need subset anymore)
+filter(sub1,schedule=='no_event'&DoW==7)
+```
+```{r}
+write.csv(BORdf, file = 'Bordeaux_context.csv',row.names = F)
+```
+
+
+
+
+
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
